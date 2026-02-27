@@ -129,9 +129,10 @@ window.onload = function () {
         if (e.code === "ArrowRight") keys.ArrowRight = false;
     });
 
-    // ---------- MOUSE (DESKTOP ONLY, NO AUDIO) ----------
+    // ---------- MOUSE (DESKTOP) ----------
     if (!isMobile) {
         board.addEventListener("mousemove", (e) => {
+            if (!gameStarted) return;
             const rect = board.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             player.x = mouseX - player.width / 2;
@@ -225,7 +226,7 @@ function update() {
         context.font = "22px sans-serif";
         context.fillText(gameOver ? "GAME OVER" : "🎉 YOU WON! 🎉", boardWidth / 2, boardHeight / 2);
         context.font = "16px sans-serif";
-        context.fillText("Refresh Page to Play", boardWidth / 2, boardHeight / 2 + 40);
+        context.fillText("Refresh Page to Play Again", boardWidth / 2, boardHeight / 2 + 40);
         return;
     }
 
@@ -285,11 +286,12 @@ function update() {
         bug.y = -bugHeight;
     }
 
-    // HUD
+    // HUD (Score & Level) - Fixed Positions
     context.fillStyle = "white";
     context.font = "16px sans-serif";
-    context.fillText("Score: " + score, 10, 20);
-    context.fillText("Level: " + level, 10, 40);
+    context.textAlign = "left"; 
+    context.fillText("Score: " + score, 20, 25); 
+    context.fillText("Level: " + level, 20, 45);
 }
 
 // ================= HELPERS =================
