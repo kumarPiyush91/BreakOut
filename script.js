@@ -34,7 +34,6 @@ bugImage.src = "bug.png";
 let bugWidth, bugHeight, bugSpeed, bug;
 
 // ================= AUDIO =================
-// game.mp3 yahan se hata diya gaya hai
 const gameOverSound = new Audio("over.mp3");
 const brickSound = new Audio("beep.mp3");
 
@@ -53,7 +52,6 @@ let level = 1;
 let maxLevel = 4;
 
 let keys = { ArrowLeft: false, ArrowRight: false };
-
 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 // ================= RESPONSIVE SIZE =================
@@ -88,13 +86,22 @@ function setCanvasSize() {
 function unlockAudio() {
     if (audioUnlocked) return;
 
-    // Sirf SFX ko pre-unlock karenge mobile lag kam karne ke liye
     [brickSound, gameOverSound].forEach(snd => {
-        snd.play()
-            .then(() => { snd.pause(); snd.currentTime = 0; })
-            .catch(() => {});
+        snd.play().then(() => {
+            snd.pause();
+            snd.currentTime = 0;
+        }).catch(() => {});
     });
+
     audioUnlocked = true;
+}
+
+// ================= USER INTERACTION =================
+function handleUserInteraction() {
+    if (!gameStarted) {
+        gameStarted = true;
+        unlockAudio();
+    }
 }
 
 // ================= INIT =================
@@ -110,13 +117,7 @@ window.onload = function () {
         setupLevel();
     });
 
-    const handleUserInteraction = () => {
-        if (!gameStarted) {
-            gameStarted = true;
-            unlockAudio();
-        }
-    };
-
+    // ---------- KEYBOARD ----------
     document.addEventListener("keydown", (e) => {
         handleUserInteraction();
         if (e.code === "ArrowLeft") keys.ArrowLeft = true;
@@ -128,12 +129,25 @@ window.onload = function () {
         if (e.code === "ArrowRight") keys.ArrowRight = false;
     });
 
+    // ---------- MOUSE (DESKTOP ONLY, NO AUDIO) ----------
+    if (!isMobile) {
+        board.addEventListener("mousemove", (e) => {
+            const rect = board.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            player.x = mouseX - player.width / 2;
+            player.x = Math.max(0, Math.min(boardWidth - player.width, player.x));
+        });
+    }
+
+    // ---------- TOUCH ----------
     board.addEventListener("touchstart", (e) => {
         handleUserInteraction();
         movePaddleTouch(e);
     }, { passive: false });
 
     board.addEventListener("touchmove", movePaddleTouch, { passive: false });
+
+    // ---------- CLICK FALLBACK ----------
     document.addEventListener("click", handleUserInteraction, { once: true });
 
     requestAnimationFrame(update);
@@ -147,6 +161,7 @@ function movePaddleTouch(e) {
     player.x = Math.max(0, Math.min(boardWidth - player.width, player.x));
 }
 
+// ================= GAME SETUP =================
 function initGame() {
     gameOver = false;
     gameWon = false;
@@ -158,12 +173,14 @@ function initGame() {
 
 function setupLevel() {
     blockRows = 2 + level;
+
     player = {
         x: boardWidth / 2 - playerWidth / 2,
         y: boardHeight - playerHeight - 15,
         width: playerWidth,
         height: playerHeight
     };
+
     ball = {
         x: boardWidth / 2,
         y: boardHeight / 2,
@@ -172,15 +189,18 @@ function setupLevel() {
         velocityX: baseBallSpeedX + (level - 1) * 0.4,
         velocityY: baseBallSpeedY + (level - 1) * 0.4
     };
+
     bug = {
         x: Math.random() * (boardWidth - bugWidth),
         y: -bugHeight,
         width: bugWidth,
         height: bugHeight
     };
+
     createBlocks();
 }
 
+// ================= GAME LOOP =================
 function update() {
     requestAnimationFrame(update);
     context.clearRect(0, 0, boardWidth, boardHeight);
@@ -189,7 +209,7 @@ function update() {
         context.fillStyle = "white";
         context.textAlign = "center";
         context.font = "24px sans-serif";
-        context.fillText("Touch/Press arrow key to Play", boardWidth / 2, boardHeight / 2);
+        context.fillText("Touch / Click / Arrow Key to Play", boardWidth / 2, boardHeight / 2);
         return;
     }
 
@@ -209,13 +229,16 @@ function update() {
         return;
     }
 
+    // Keyboard movement
     if (keys.ArrowLeft) player.x -= playerSpeed;
     if (keys.ArrowRight) player.x += playerSpeed;
     player.x = Math.max(0, Math.min(boardWidth - player.width, player.x));
 
+    // Draw player
     context.fillStyle = "lightgreen";
     context.fillRect(player.x, player.y, player.width, player.height);
 
+    // Ball
     ball.x += ball.velocityX;
     ball.y += ball.velocityY;
     context.fillStyle = "white";
@@ -226,6 +249,7 @@ function update() {
     if (ball.x <= 0 || ball.x + ball.width >= boardWidth) ball.velocityX *= -1;
     if (ball.y + ball.height >= boardHeight) gameOver = true;
 
+    // Blocks
     for (let block of blockArray) {
         if (!block.break) {
             context.fillStyle = block.color;
@@ -251,6 +275,7 @@ function update() {
         }
     }
 
+    // Bug
     bug.y += bugSpeed;
     context.drawImage(bugImage, bug.x, bug.y, bug.width, bug.height);
 
@@ -260,18 +285,21 @@ function update() {
         bug.y = -bugHeight;
     }
 
+    // HUD
     context.fillStyle = "white";
-    context.textAlign = "left";
     context.font = "16px sans-serif";
     context.fillText("Score: " + score, 10, 20);
     context.fillText("Level: " + level, 10, 40);
 }
 
+// ================= HELPERS =================
 function detectCollision(a, b) {
-    return a.x < b.x + b.width &&
-           a.x + a.width > b.x &&
-           a.y < b.y + b.height &&
-           a.y + a.height > b.y;
+    return (
+        a.x < b.x + b.width &&
+        a.x + a.width > b.x &&
+        a.y < b.y + b.height &&
+        a.y + a.height > b.y
+    );
 }
 
 function createBlocks() {
