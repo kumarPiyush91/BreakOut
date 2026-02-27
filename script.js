@@ -34,19 +34,23 @@ bugImage.src = "bug.png";
 let bugWidth, bugHeight, bugSpeed, bug;
 
 // ================= AUDIO =================
-let bgMusic = new Audio("game.mp3");
-let gameOverSound = new Audio("over.mp3");
-let brickSound = new Audio("beep.mp3");
+const bgMusic = new Audio("game.mp3");
+const gameOverSound = new Audio("over.mp3");
+const brickSound = new Audio("beep.mp3");
 
 bgMusic.loop = true;
-let musicStarted = false;
+bgMusic.volume = 0.5;
+gameOverSound.volume = 0.9;
+brickSound.volume = 0.6;
+
+let musicUnlocked = false;
 let gameOverSoundPlayed = false;
 
 // ================= GAME STATE =================
 let score = 0;
 let gameOver = false;
 let gameWon = false;
-let gameStarted = false; 
+let gameStarted = false;
 let level = 1;
 let maxLevel = 4;
 
@@ -69,8 +73,7 @@ function setCanvasSize() {
     ballWidth = boardWidth * 0.025;
     ballHeight = ballWidth;
 
-    // Mobile Speed Fix (Half speed for mobile)
-    let speedMultiplier = isMobile ? 0.004 : 0.008; 
+    let speedMultiplier = isMobile ? 0.004 : 0.008;
     baseBallSpeedX = boardWidth * speedMultiplier;
     baseBallSpeedY = boardHeight * speedMultiplier;
 
@@ -81,21 +84,31 @@ function setCanvasSize() {
 
     bugWidth = boardWidth * 0.07;
     bugHeight = bugWidth;
-    bugSpeed = boardHeight * (isMobile ? 0.002 : 0.004);
+    bugSpeed = boardHeight * (isMobile ? 0.0025 : 0.005);
 }
 
 // ================= AUDIO UNLOCK =================
 function unlockAudio() {
-    if (!musicStarted) {
-        bgMusic.play().then(() => {
-            musicStarted = true;
-            bgMusic.volume = 0.5;
-        }).catch(e => console.log("Audio waiting for tap"));
+    if (musicUnlocked) return;
 
-        // Pre-warm sounds to avoid lag on mobile
-        brickSound.play().then(() => { brickSound.pause(); brickSound.currentTime = 0; }).catch(() => {});
-        gameOverSound.play().then(() => { gameOverSound.pause(); gameOverSound.currentTime = 0; }).catch(() => {});
-    }
+    // Try to unlock background music
+    bgMusic.play()
+        .then(() => {
+            bgMusic.pause();
+            bgMusic.currentTime = 0;
+            musicUnlocked = true;
+            console.log("Audio context unlocked → bg music ready");
+        })
+        .catch(e => {
+            console.log("First play failed (normal on mobile until gesture)", e);
+        });
+
+    // Pre-unlock other sounds (reduces lag on first hit)
+    [brickSound, gameOverSound].forEach(snd => {
+        snd.play()
+            .then(() => { snd.pause(); snd.currentTime = 0; })
+            .catch(() => {});
+    });
 }
 
 // ================= INIT =================
@@ -106,14 +119,26 @@ window.onload = function () {
     setCanvasSize();
     initGame();
 
-    window.addEventListener("resize", () => { setCanvasSize(); setupLevel(); });
+    window.addEventListener("resize", () => {
+        setCanvasSize();
+        setupLevel(); // re-setup level on resize
+    });
 
-    // Desktop Controls
+    // Unified start + unlock logic
+    const handleUserInteraction = () => {
+        if (!gameStarted) {
+            gameStarted = true;
+            unlockAudio();
+        }
+    };
+
+    // Keyboard
     document.addEventListener("keydown", (e) => {
-        if (!gameStarted) { gameStarted = true; unlockAudio(); }
+        handleUserInteraction();
         if (e.code === "ArrowLeft") keys.ArrowLeft = true;
         if (e.code === "ArrowRight") keys.ArrowRight = true;
     });
+
     document.addEventListener("keyup", (e) => {
         if (e.code === "ArrowLeft") keys.ArrowLeft = false;
         if (e.code === "ArrowRight") keys.ArrowRight = false;
@@ -121,21 +146,24 @@ window.onload = function () {
 
     // Mobile Touch
     board.addEventListener("touchstart", (e) => {
-        if (!gameStarted) { gameStarted = true; unlockAudio(); }
+        handleUserInteraction();
         movePaddleTouch(e);
     }, { passive: false });
+
     board.addEventListener("touchmove", movePaddleTouch, { passive: false });
+
+    // Extra safety for some browsers
+    document.addEventListener("click", handleUserInteraction, { once: true });
 
     requestAnimationFrame(update);
 };
 
 function movePaddleTouch(e) {
     e.preventDefault();
-    let rect = board.getBoundingClientRect();
-    let touchX = e.touches[0].clientX - rect.left;
+    const rect = board.getBoundingClientRect();
+    const touchX = e.touches[0].clientX - rect.left;
     player.x = touchX - player.width / 2;
-    if (player.x < 0) player.x = 0;
-    if (player.x + player.width > boardWidth) player.x = boardWidth - player.width;
+    player.x = Math.max(0, Math.min(boardWidth - player.width, player.x));
 }
 
 function initGame() {
@@ -144,12 +172,20 @@ function initGame() {
     score = 0;
     level = 1;
     gameOverSoundPlayed = false;
+    musicUnlocked = false; // reset on restart (optional)
     setupLevel();
 }
 
 function setupLevel() {
     blockRows = 2 + level;
-    player = { x: boardWidth/2 - playerWidth/2, y: boardHeight - playerHeight - 15, width: playerWidth, height: playerHeight };
+
+    player = {
+        x: boardWidth / 2 - playerWidth / 2,
+        y: boardHeight - playerHeight - 15,
+        width: playerWidth,
+        height: playerHeight
+    };
+
     ball = {
         x: boardWidth / 2,
         y: boardHeight / 2,
@@ -158,7 +194,14 @@ function setupLevel() {
         velocityX: baseBallSpeedX + (level - 1) * 0.4,
         velocityY: baseBallSpeedY + (level - 1) * 0.4
     };
-    bug = { x: Math.random() * (boardWidth - bugWidth), y: -bugHeight, width: bugWidth, height: bugHeight };
+
+    bug = {
+        x: Math.random() * (boardWidth - bugWidth),
+        y: -bugHeight,
+        width: bugWidth,
+        height: bugHeight
+    };
+
     createBlocks();
 }
 
@@ -170,29 +213,39 @@ function update() {
         context.fillStyle = "white";
         context.textAlign = "center";
         context.font = "24px sans-serif";
-        context.fillText("TAP OR PRESS KEY TO START", boardWidth / 2, boardHeight / 2);
+        context.fillText("Press arrow key to Play", boardWidth / 2, boardHeight / 2);
         return;
+    }
+
+    // Try to resume background music if it stopped (mobile tab switch, etc.)
+    if (musicUnlocked && bgMusic.paused && !gameOver && !gameWon) {
+        bgMusic.play().catch(() => {
+            // silent fail - user may need to tap again
+        });
     }
 
     if (gameOver || gameWon) {
         bgMusic.pause();
         if (gameOver && !gameOverSoundPlayed) {
-            gameOverSound.play();
+            gameOverSound.currentTime = 0;
+            gameOverSound.play().catch(() => {});
             gameOverSoundPlayed = true;
         }
+
         context.fillStyle = "white";
         context.textAlign = "center";
         context.font = "22px sans-serif";
         context.fillText(gameOver ? "GAME OVER" : "🎉 YOU WON! 🎉", boardWidth / 2, boardHeight / 2);
         context.font = "16px sans-serif";
-        context.fillText("Refresh to Restart", boardWidth / 2, boardHeight / 2 + 40);
+        context.fillText("Refresh Page to Play", boardWidth / 2, boardHeight / 2 + 40);
         return;
     }
 
-    // Player
+    // Player movement
     if (keys.ArrowLeft) player.x -= playerSpeed;
     if (keys.ArrowRight) player.x += playerSpeed;
     player.x = Math.max(0, Math.min(boardWidth - player.width, player.x));
+
     context.fillStyle = "lightgreen";
     context.fillRect(player.x, player.y, player.width, player.height);
 
@@ -212,27 +265,37 @@ function update() {
         if (!block.break) {
             context.fillStyle = block.color;
             context.fillRect(block.x, block.y, block.width, block.height);
+
             if (detectCollision(ball, block)) {
                 block.break = true;
                 ball.velocityY *= -1;
                 score += 100;
                 blockCount--;
-                // Brick Beep Fix
-                brickSound.currentTime = 0; 
+
+                brickSound.currentTime = 0;
                 brickSound.play().catch(() => {});
             }
         }
     }
 
     if (blockCount === 0) {
-        if (level < maxLevel) { level++; setupLevel(); } else { gameWon = true; }
+        if (level < maxLevel) {
+            level++;
+            setupLevel();
+        } else {
+            gameWon = true;
+        }
     }
 
     // Bug
     bug.y += bugSpeed;
     context.drawImage(bugImage, bug.x, bug.y, bug.width, bug.height);
+
     if (detectCollision(bug, player)) gameOver = true;
-    if (bug.y > boardHeight) { bug.x = Math.random() * (boardWidth - bugWidth); bug.y = -bugHeight; }
+    if (bug.y > boardHeight) {
+        bug.x = Math.random() * (boardWidth - bugWidth);
+        bug.y = -bugHeight;
+    }
 
     // HUD
     context.fillStyle = "white";
@@ -242,21 +305,28 @@ function update() {
     context.fillText("Level: " + level, 10, 40);
 }
 
+// ================= HELPERS =================
 function detectCollision(a, b) {
-    return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
+    return a.x < b.x + b.width &&
+           a.x + a.width > b.x &&
+           a.y < b.y + b.height &&
+           a.y + a.height > b.y;
 }
 
 function createBlocks() {
     blockArray = [];
-    let totalWidth = blockColumns * blockWidth + (blockColumns - 1) * blockGap;
-    let startX = (boardWidth - totalWidth) / 2;
+    const totalWidth = blockColumns * blockWidth + (blockColumns - 1) * blockGap;
+    const startX = (boardWidth - totalWidth) / 2;
+
     for (let c = 0; c < blockColumns; c++) {
         for (let r = 0; r < blockRows; r++) {
             blockArray.push({
                 x: startX + c * (blockWidth + blockGap),
                 y: blockTopOffset + r * (blockHeight + blockGap),
-                width: blockWidth, height: blockHeight,
-                break: false, color: colors[r % colors.length]
+                width: blockWidth,
+                height: blockHeight,
+                break: false,
+                color: colors[r % colors.length]
             });
         }
     }
