@@ -55,7 +55,7 @@ let maxLevel = 4;
 
 let keys = { ArrowLeft: false, ArrowRight: false };
 
-// ================= CHECK DEVICE =================
+// ================= DEVICE DETECTION =================
 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 // ================= RESPONSIVE SIZE =================
@@ -67,12 +67,12 @@ function setCanvasSize() {
 
     playerWidth = boardWidth * 0.18;
     playerHeight = boardHeight * 0.025;
-    playerSpeed = boardWidth * 0.02;
+    playerSpeed = boardWidth * 0.025;
 
     ballWidth = boardWidth * 0.025;
     ballHeight = ballWidth;
 
-    // Speed Logic: Mobile pe aadhi (0.5x)
+    // Mobile pe ball ki speed desktop se aadhi (0.004 vs 0.008)
     let speedMultiplier = isMobile ? 0.004 : 0.008; 
     baseBallSpeedX = boardWidth * speedMultiplier;
     baseBallSpeedY = boardHeight * speedMultiplier;
@@ -84,21 +84,24 @@ function setCanvasSize() {
 
     bugWidth = boardWidth * 0.07;
     bugHeight = bugWidth;
-    bugSpeed = boardHeight * (isMobile ? 0.0025 : 0.005);
+    bugSpeed = boardHeight * (isMobile ? 0.002 : 0.004);
 }
 
-// ================= AUDIO UNLOCK =================
-function handleUserInteraction() {
-    if (!gameStarted) {
-        gameStarted = true;
-        // Background Music Start
+// ================= AUDIO UNLOCK (FOR MOBILE) =================
+function startMusic() {
+    if (!musicStarted && !gameOver) {
         bgMusic.loop = true;
         bgMusic.volume = 0.5;
+        
+        // Mobile browsers require a clean play() call on user gesture
         bgMusic.play().then(() => {
             musicStarted = true;
-        }).catch(err => console.log("Audio Error:", err));
-        
-        // Mobile par audio context wake up karne ke liye
+            console.log("Audio Unlocked");
+        }).catch(err => {
+            console.log("Audio waiting for interaction...");
+        });
+
+        // Pre-warm the game over sound
         gameOverSound.play().then(() => {
             gameOverSound.pause();
             gameOverSound.currentTime = 0;
@@ -106,6 +109,7 @@ function handleUserInteraction() {
     }
 }
 
+// ================= INIT =================
 window.onload = function () {
     board = document.getElementById("board");
     context = board.getContext("2d");
@@ -113,13 +117,16 @@ window.onload = function () {
     setCanvasSize();
     initGame();
 
-    window.addEventListener("resize", () => { setCanvasSize(); setupLevel(); });
+    window.addEventListener("resize", () => {
+        setCanvasSize();
+        setupLevel();
+    });
 
     requestAnimationFrame(update);
 
     // Desktop Controls
     document.addEventListener("keydown", (e) => {
-        handleUserInteraction();
+        if (!gameStarted) { gameStarted = true; startMusic(); }
         if (e.code === "ArrowLeft") keys.ArrowLeft = true;
         if (e.code === "ArrowRight") keys.ArrowRight = true;
     });
@@ -131,12 +138,19 @@ window.onload = function () {
 
     // Mobile/Tablet Controls
     board.addEventListener("touchstart", (e) => {
-        handleUserInteraction();
+        if (!gameStarted) { 
+            gameStarted = true; 
+            startMusic(); 
+        }
         movePaddleTouch(e);
     }, { passive: false });
 
     board.addEventListener("touchmove", movePaddleTouch, { passive: false });
-    board.addEventListener("mousedown", handleUserInteraction);
+    
+    // Click fallback for desktop
+    board.addEventListener("mousedown", () => {
+        if (!gameStarted) { gameStarted = true; startMusic(); }
+    });
 };
 
 function movePaddleTouch(e) {
@@ -144,6 +158,8 @@ function movePaddleTouch(e) {
     let rect = board.getBoundingClientRect();
     let touchX = e.touches[0].clientX - rect.left;
     player.x = touchX - player.width / 2;
+    
+    // Boundary check
     if (player.x < 0) player.x = 0;
     if (player.x + player.width > boardWidth) player.x = boardWidth - player.width;
 }
@@ -170,10 +186,15 @@ function setupLevel() {
         y: boardHeight / 2,
         width: ballWidth,
         height: ballHeight,
-        velocityX: baseBallSpeedX + (level - 1) * 0.5,
-        velocityY: baseBallSpeedY + (level - 1) * 0.5
+        velocityX: baseBallSpeedX + (level - 1) * 0.4,
+        velocityY: baseBallSpeedY + (level - 1) * 0.4
     };
-    bug = { x: Math.random() * (boardWidth - bugWidth), y: -bugHeight, width: bugWidth, height: bugHeight };
+    bug = { 
+        x: Math.random() * (boardWidth - bugWidth), 
+        y: -bugHeight, 
+        width: bugWidth, 
+        height: bugHeight 
+    };
     createBlocks();
 }
 
@@ -181,32 +202,37 @@ function update() {
     requestAnimationFrame(update);
     context.clearRect(0, 0, boardWidth, boardHeight);
 
+    // START OVERLAY
     if (!gameStarted) {
         context.fillStyle = "white";
         context.textAlign = "center";
         context.font = "24px sans-serif";
-        context.fillText("CLICK / TAP TO START", boardWidth / 2, boardHeight / 2);
+        context.fillText("TAP SCREEN TO START", boardWidth / 2, boardHeight / 2);
         context.font = "16px sans-serif";
-        context.fillText("Music will play automatically", boardWidth / 2, boardHeight / 2 + 40);
+        context.fillText("Music will play on tap", boardWidth / 2, boardHeight / 2 + 40);
         return;
     }
 
+    // GAME OVER / WIN
     if (gameOver || gameWon) {
         bgMusic.pause();
+        bgMusic.currentTime = 0;
+
         if (gameOver && !gameOverSoundPlayed) {
-            gameOverSound.play();
+            gameOverSound.play().catch(e => console.log(e));
             gameOverSoundPlayed = true;
         }
+
         context.fillStyle = "white";
         context.textAlign = "center";
         context.font = "22px sans-serif";
-        context.fillText(gameOver ? "Game Over" : "🎉 WINNER! 🎉", boardWidth / 2, boardHeight / 2);
+        context.fillText(gameOver ? "Game Over" : "🎉 YOU WON! 🎉", boardWidth / 2, boardHeight / 2);
         context.font = "16px sans-serif";
         context.fillText("Refresh to Play Again", boardWidth / 2, boardHeight / 2 + 35);
         return;
     }
 
-    // Logic
+    // PLAYER MOVEMENT
     if (keys.ArrowLeft) player.x -= playerSpeed;
     if (keys.ArrowRight) player.x += playerSpeed;
     if (player.x < 0) player.x = 0;
@@ -215,16 +241,19 @@ function update() {
     context.fillStyle = "lightgreen";
     context.fillRect(player.x, player.y, player.width, player.height);
 
+    // BALL MOVEMENT
     ball.x += ball.velocityX;
     ball.y += ball.velocityY;
     context.fillStyle = "white";
     context.fillRect(ball.x, ball.y, ball.width, ball.height);
 
+    // COLLISION: PADDLE & WALLS
     if (detectCollision(ball, player)) ball.velocityY *= -1;
     if (ball.y <= 0) ball.velocityY *= -1;
     if (ball.x <= 0 || ball.x + ball.width >= boardWidth) ball.velocityX *= -1;
     if (ball.y + ball.height >= boardHeight) gameOver = true;
 
+    // BLOCKS
     for (let block of blockArray) {
         if (!block.break) {
             context.fillStyle = block.color;
@@ -242,11 +271,16 @@ function update() {
         if (level < maxLevel) { level++; setupLevel(); } else { gameWon = true; }
     }
 
+    // BUG
     bug.y += bugSpeed;
     context.drawImage(bugImage, bug.x, bug.y, bug.width, bug.height);
     if (detectCollision(bug, player)) gameOver = true;
-    if (bug.y > boardHeight) { bug.x = Math.random() * (boardWidth - bugWidth); bug.y = -bugHeight; }
+    if (bug.y > boardHeight) {
+        bug.x = Math.random() * (boardWidth - bugWidth);
+        bug.y = -bugHeight;
+    }
 
+    // HUD
     context.fillStyle = "white";
     context.textAlign = "left";
     context.font = "16px sans-serif";
