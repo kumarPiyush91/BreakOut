@@ -39,8 +39,6 @@ let bug;
 // ================= AUDIO =================
 let bgMusic = new Audio("game.mp3");
 let gameOverSound = new Audio("over.mp3");
-
-// Mobile optimization: pre-load audio
 bgMusic.preload = "auto";
 gameOverSound.preload = "auto";
 
@@ -51,25 +49,14 @@ let gameOverSoundPlayed = false;
 let score = 0;
 let gameOver = false;
 let gameWon = false;
-let gameStarted = false; // Naya variable game control ke liye
+let gameStarted = false; 
 let level = 1;
 let maxLevel = 4;
 
-let keys = {
-    ArrowLeft: false,
-    ArrowRight: false
-};
+let keys = { ArrowLeft: false, ArrowRight: false };
 
-// ================= AUDIO TRIGGER =================
-function startMusic() {
-    if (!musicStarted) {
-        bgMusic.loop = true;
-        bgMusic.volume = 0.5;
-        bgMusic.play()
-            .then(() => { musicStarted = true; })
-            .catch(err => console.log("Audio unlock failed:", err));
-    }
-}
+// ================= CHECK DEVICE =================
+const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 // ================= RESPONSIVE SIZE =================
 function setCanvasSize() {
@@ -85,8 +72,10 @@ function setCanvasSize() {
     ballWidth = boardWidth * 0.025;
     ballHeight = ballWidth;
 
-    baseBallSpeedX = boardWidth * 0.008;
-    baseBallSpeedY = boardHeight * 0.008;
+    // Speed Logic: Mobile pe aadhi (0.5x)
+    let speedMultiplier = isMobile ? 0.004 : 0.008; 
+    baseBallSpeedX = boardWidth * speedMultiplier;
+    baseBallSpeedY = boardHeight * speedMultiplier;
 
     blockWidth = boardWidth * 0.1;
     blockHeight = boardHeight * 0.03;
@@ -95,10 +84,28 @@ function setCanvasSize() {
 
     bugWidth = boardWidth * 0.07;
     bugHeight = bugWidth;
-    bugSpeed = boardHeight * 0.005;
+    bugSpeed = boardHeight * (isMobile ? 0.0025 : 0.005);
 }
 
-// ================= INIT =================
+// ================= AUDIO UNLOCK =================
+function handleUserInteraction() {
+    if (!gameStarted) {
+        gameStarted = true;
+        // Background Music Start
+        bgMusic.loop = true;
+        bgMusic.volume = 0.5;
+        bgMusic.play().then(() => {
+            musicStarted = true;
+        }).catch(err => console.log("Audio Error:", err));
+        
+        // Mobile par audio context wake up karne ke liye
+        gameOverSound.play().then(() => {
+            gameOverSound.pause();
+            gameOverSound.currentTime = 0;
+        }).catch(() => {});
+    }
+}
+
 window.onload = function () {
     board = document.getElementById("board");
     context = board.getContext("2d");
@@ -106,16 +113,13 @@ window.onload = function () {
     setCanvasSize();
     initGame();
 
-    window.addEventListener("resize", function () {
-        setCanvasSize();
-        if(gameStarted) setupLevel(); 
-    });
+    window.addEventListener("resize", () => { setCanvasSize(); setupLevel(); });
 
     requestAnimationFrame(update);
 
-    // ===== INPUT CONTROLS =====
+    // Desktop Controls
     document.addEventListener("keydown", (e) => {
-        if (!gameStarted) { gameStarted = true; startMusic(); }
+        handleUserInteraction();
         if (e.code === "ArrowLeft") keys.ArrowLeft = true;
         if (e.code === "ArrowRight") keys.ArrowRight = true;
     });
@@ -125,23 +129,24 @@ window.onload = function () {
         if (e.code === "ArrowRight") keys.ArrowRight = false;
     });
 
-    // Mobile Touch
-    function handleTouch(e) {
-        e.preventDefault();
-        if (!gameStarted) { gameStarted = true; startMusic(); }
-        
-        let rect = board.getBoundingClientRect();
-        let touchX = e.touches[0].clientX - rect.left;
-        player.x = touchX - player.width / 2;
-        
-        if (player.x < 0) player.x = 0;
-        if (player.x + player.width > boardWidth) player.x = boardWidth - player.width;
-    }
+    // Mobile/Tablet Controls
+    board.addEventListener("touchstart", (e) => {
+        handleUserInteraction();
+        movePaddleTouch(e);
+    }, { passive: false });
 
-    board.addEventListener("touchstart", handleTouch, { passive: false });
-    board.addEventListener("touchmove", handleTouch, { passive: false });
-    board.addEventListener("click", () => { if(!gameStarted) { gameStarted = true; startMusic(); } });
+    board.addEventListener("touchmove", movePaddleTouch, { passive: false });
+    board.addEventListener("mousedown", handleUserInteraction);
 };
+
+function movePaddleTouch(e) {
+    e.preventDefault();
+    let rect = board.getBoundingClientRect();
+    let touchX = e.touches[0].clientX - rect.left;
+    player.x = touchX - player.width / 2;
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.width > boardWidth) player.x = boardWidth - player.width;
+}
 
 function initGame() {
     gameOver = false;
@@ -168,12 +173,7 @@ function setupLevel() {
         velocityX: baseBallSpeedX + (level - 1) * 0.5,
         velocityY: baseBallSpeedY + (level - 1) * 0.5
     };
-    bug = {
-        x: Math.random() * (boardWidth - bugWidth),
-        y: -bugHeight,
-        width: bugWidth,
-        height: bugHeight
-    };
+    bug = { x: Math.random() * (boardWidth - bugWidth), y: -bugHeight, width: bugWidth, height: bugHeight };
     createBlocks();
 }
 
@@ -181,38 +181,32 @@ function update() {
     requestAnimationFrame(update);
     context.clearRect(0, 0, boardWidth, boardHeight);
 
-    // ===== START SCREEN (Mobile compatibility) =====
     if (!gameStarted) {
         context.fillStyle = "white";
         context.textAlign = "center";
-        context.font = "20px sans-serif";
-        context.fillText("Tap or Press Any Key to Start", boardWidth / 2, boardHeight / 2);
-        context.font = "14px sans-serif";
-        context.fillText("Music will play on start", boardWidth / 2, boardHeight / 2 + 30);
+        context.font = "24px sans-serif";
+        context.fillText("CLICK / TAP TO START", boardWidth / 2, boardHeight / 2);
+        context.font = "16px sans-serif";
+        context.fillText("Music will play automatically", boardWidth / 2, boardHeight / 2 + 40);
         return;
     }
 
-    // ===== GAME OVER / WIN =====
     if (gameOver || gameWon) {
         bgMusic.pause();
-        bgMusic.currentTime = 0;
-
         if (gameOver && !gameOverSoundPlayed) {
-            gameOverSound.currentTime = 0;
-            gameOverSound.play().catch(e => console.log(e));
+            gameOverSound.play();
             gameOverSoundPlayed = true;
         }
-
         context.fillStyle = "white";
         context.textAlign = "center";
         context.font = "22px sans-serif";
-        context.fillText(gameOver ? "Game Over" : "🎉 You Won! 🎉", boardWidth / 2, boardHeight / 2);
+        context.fillText(gameOver ? "Game Over" : "🎉 WINNER! 🎉", boardWidth / 2, boardHeight / 2);
         context.font = "16px sans-serif";
-        context.fillText("Refresh Page to Restart", boardWidth / 2, boardHeight / 2 + 30);
+        context.fillText("Refresh to Play Again", boardWidth / 2, boardHeight / 2 + 35);
         return;
     }
 
-    // ===== PLAYER =====
+    // Logic
     if (keys.ArrowLeft) player.x -= playerSpeed;
     if (keys.ArrowRight) player.x += playerSpeed;
     if (player.x < 0) player.x = 0;
@@ -221,7 +215,6 @@ function update() {
     context.fillStyle = "lightgreen";
     context.fillRect(player.x, player.y, player.width, player.height);
 
-    // ===== BALL =====
     ball.x += ball.velocityX;
     ball.y += ball.velocityY;
     context.fillStyle = "white";
@@ -232,7 +225,6 @@ function update() {
     if (ball.x <= 0 || ball.x + ball.width >= boardWidth) ball.velocityX *= -1;
     if (ball.y + ball.height >= boardHeight) gameOver = true;
 
-    // ===== BLOCKS =====
     for (let block of blockArray) {
         if (!block.break) {
             context.fillStyle = block.color;
@@ -250,16 +242,11 @@ function update() {
         if (level < maxLevel) { level++; setupLevel(); } else { gameWon = true; }
     }
 
-    // ===== BUG =====
     bug.y += bugSpeed;
     context.drawImage(bugImage, bug.x, bug.y, bug.width, bug.height);
     if (detectCollision(bug, player)) gameOver = true;
-    if (bug.y > boardHeight) {
-        bug.x = Math.random() * (boardWidth - bugWidth);
-        bug.y = -bugHeight;
-    }
+    if (bug.y > boardHeight) { bug.x = Math.random() * (boardWidth - bugWidth); bug.y = -bugHeight; }
 
-    // HUD
     context.fillStyle = "white";
     context.textAlign = "left";
     context.font = "16px sans-serif";
