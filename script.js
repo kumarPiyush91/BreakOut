@@ -189,7 +189,7 @@ function update() {
         context.fillStyle = "white";
         context.textAlign = "center";
         context.font = "24px sans-serif";
-        context.fillText("Press arrow key to Play", boardWidth / 2, boardHeight / 2);
+        context.fillText("Touch/Press arrow key to Play", boardWidth / 2, boardHeight / 2);
         return;
     }
 
