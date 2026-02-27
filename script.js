@@ -34,16 +34,14 @@ bugImage.src = "bug.png";
 let bugWidth, bugHeight, bugSpeed, bug;
 
 // ================= AUDIO =================
-const bgMusic = new Audio("game.mp3");
+// game.mp3 yahan se hata diya gaya hai
 const gameOverSound = new Audio("over.mp3");
 const brickSound = new Audio("beep.mp3");
 
-bgMusic.loop = true;
-bgMusic.volume = 0.5;
 gameOverSound.volume = 0.9;
 brickSound.volume = 0.6;
 
-let musicUnlocked = false;
+let audioUnlocked = false;
 let gameOverSoundPlayed = false;
 
 // ================= GAME STATE =================
@@ -56,7 +54,6 @@ let maxLevel = 4;
 
 let keys = { ArrowLeft: false, ArrowRight: false };
 
-// Check if device is Mobile
 const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
 
 // ================= RESPONSIVE SIZE =================
@@ -89,26 +86,15 @@ function setCanvasSize() {
 
 // ================= AUDIO UNLOCK =================
 function unlockAudio() {
-    if (musicUnlocked) return;
+    if (audioUnlocked) return;
 
-    // Try to unlock background music
-    bgMusic.play()
-        .then(() => {
-            bgMusic.pause();
-            bgMusic.currentTime = 0;
-            musicUnlocked = true;
-            console.log("Audio context unlocked → bg music ready");
-        })
-        .catch(e => {
-            console.log("First play failed (normal on mobile until gesture)", e);
-        });
-
-    // Pre-unlock other sounds (reduces lag on first hit)
+    // Sirf SFX ko pre-unlock karenge mobile lag kam karne ke liye
     [brickSound, gameOverSound].forEach(snd => {
         snd.play()
             .then(() => { snd.pause(); snd.currentTime = 0; })
             .catch(() => {});
     });
+    audioUnlocked = true;
 }
 
 // ================= INIT =================
@@ -121,10 +107,9 @@ window.onload = function () {
 
     window.addEventListener("resize", () => {
         setCanvasSize();
-        setupLevel(); // re-setup level on resize
+        setupLevel();
     });
 
-    // Unified start + unlock logic
     const handleUserInteraction = () => {
         if (!gameStarted) {
             gameStarted = true;
@@ -132,7 +117,6 @@ window.onload = function () {
         }
     };
 
-    // Keyboard
     document.addEventListener("keydown", (e) => {
         handleUserInteraction();
         if (e.code === "ArrowLeft") keys.ArrowLeft = true;
@@ -144,15 +128,12 @@ window.onload = function () {
         if (e.code === "ArrowRight") keys.ArrowRight = false;
     });
 
-    // Mobile Touch
     board.addEventListener("touchstart", (e) => {
         handleUserInteraction();
         movePaddleTouch(e);
     }, { passive: false });
 
     board.addEventListener("touchmove", movePaddleTouch, { passive: false });
-
-    // Extra safety for some browsers
     document.addEventListener("click", handleUserInteraction, { once: true });
 
     requestAnimationFrame(update);
@@ -172,20 +153,17 @@ function initGame() {
     score = 0;
     level = 1;
     gameOverSoundPlayed = false;
-    musicUnlocked = false; // reset on restart (optional)
     setupLevel();
 }
 
 function setupLevel() {
     blockRows = 2 + level;
-
     player = {
         x: boardWidth / 2 - playerWidth / 2,
         y: boardHeight - playerHeight - 15,
         width: playerWidth,
         height: playerHeight
     };
-
     ball = {
         x: boardWidth / 2,
         y: boardHeight / 2,
@@ -194,14 +172,12 @@ function setupLevel() {
         velocityX: baseBallSpeedX + (level - 1) * 0.4,
         velocityY: baseBallSpeedY + (level - 1) * 0.4
     };
-
     bug = {
         x: Math.random() * (boardWidth - bugWidth),
         y: -bugHeight,
         width: bugWidth,
         height: bugHeight
     };
-
     createBlocks();
 }
 
@@ -217,15 +193,7 @@ function update() {
         return;
     }
 
-    // Try to resume background music if it stopped (mobile tab switch, etc.)
-    if (musicUnlocked && bgMusic.paused && !gameOver && !gameWon) {
-        bgMusic.play().catch(() => {
-            // silent fail - user may need to tap again
-        });
-    }
-
     if (gameOver || gameWon) {
-        bgMusic.pause();
         if (gameOver && !gameOverSoundPlayed) {
             gameOverSound.currentTime = 0;
             gameOverSound.play().catch(() => {});
@@ -241,7 +209,6 @@ function update() {
         return;
     }
 
-    // Player movement
     if (keys.ArrowLeft) player.x -= playerSpeed;
     if (keys.ArrowRight) player.x += playerSpeed;
     player.x = Math.max(0, Math.min(boardWidth - player.width, player.x));
@@ -249,7 +216,6 @@ function update() {
     context.fillStyle = "lightgreen";
     context.fillRect(player.x, player.y, player.width, player.height);
 
-    // Ball
     ball.x += ball.velocityX;
     ball.y += ball.velocityY;
     context.fillStyle = "white";
@@ -260,7 +226,6 @@ function update() {
     if (ball.x <= 0 || ball.x + ball.width >= boardWidth) ball.velocityX *= -1;
     if (ball.y + ball.height >= boardHeight) gameOver = true;
 
-    // Blocks
     for (let block of blockArray) {
         if (!block.break) {
             context.fillStyle = block.color;
@@ -271,7 +236,6 @@ function update() {
                 ball.velocityY *= -1;
                 score += 100;
                 blockCount--;
-
                 brickSound.currentTime = 0;
                 brickSound.play().catch(() => {});
             }
@@ -287,7 +251,6 @@ function update() {
         }
     }
 
-    // Bug
     bug.y += bugSpeed;
     context.drawImage(bugImage, bug.x, bug.y, bug.width, bug.height);
 
@@ -297,7 +260,6 @@ function update() {
         bug.y = -bugHeight;
     }
 
-    // HUD
     context.fillStyle = "white";
     context.textAlign = "left";
     context.font = "16px sans-serif";
@@ -305,7 +267,6 @@ function update() {
     context.fillText("Level: " + level, 10, 40);
 }
 
-// ================= HELPERS =================
 function detectCollision(a, b) {
     return a.x < b.x + b.width &&
            a.x + a.width > b.x &&
